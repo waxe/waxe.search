@@ -19,6 +19,7 @@ setup(name='waxe.search',
       zip_safe=False,
       install_requires=[
           # -*- Extra requirements: -*-
+          'elasticsearch',
       ],
       test_suite='nose.collector',
       setup_requires=['nose'],

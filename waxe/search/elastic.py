@@ -174,8 +174,9 @@ def delete_file(client, index, ident, abspath):
     ok = True
     rows = helpers.scan(client, index=index, doc_type=DOC_TYPE_TAG, query=body)
     for row in rows:
-        ident = row['_id']
-        response = client.delete(index=index, doc_type=DOC_TYPE_TAG, id=ident)
+        tag_ident = row['_id']
+        response = client.delete(index=index, doc_type=DOC_TYPE_TAG,
+                                 id=tag_ident)
         if not response['found']:
             ok = False
             log.error('Error deleting file %s in %s.%s.\n\n%s' % (
@@ -214,6 +215,7 @@ def incremental_index(url, index, paths, root_path, force=False):
         done += [path]
 
         if not os.path.exists(path):
+            log.debug("%s dosn't exist" % path)
             delete_file(client, index, ident, path)
             continue
 
@@ -221,7 +223,8 @@ def incremental_index(url, index, paths, root_path, force=False):
         mtime = os.path.getmtime(path)
         if mtime > indexed_time:
             # TODO: find a better way to update document
-            # The file has changed, delete it to reindex it!
+            # The file has changed, we delete it to reindex it!
+            log.debug('%s has changed' % path)
             delete_file(client, index, ident, path)
             index_file(client, index, path, root_path)
 

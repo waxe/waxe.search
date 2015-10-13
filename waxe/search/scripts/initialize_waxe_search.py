@@ -49,9 +49,9 @@ def main(argv=sys.argv):
     index_name_prefix = settings.get('waxe.search.index_name_prefix')
 
     for uc in UserConfig.query.all():
-        if uc.idconfig != 1:
-            continue
         if not uc.root_path:
+            continue
+        if not os.path.exists(uc.root_path):
             continue
         DBSession.add(uc)
         user_index_name = uc.user.get_search_dirname()
@@ -88,15 +88,17 @@ def delete(argv=sys.argv):
     index_name_prefix = settings.get('waxe.search.index_name_prefix')
 
     for uc in UserConfig.query.all():
-        if uc.idconfig != 1:
-            continue
+        # TODO: delete for all if exists index, not on these conditions
         if not uc.root_path:
+            continue
+        if not os.path.exists(uc.root_path):
             continue
         DBSession.add(uc)
         user_index_name = uc.user.get_search_dirname()
         index_name = index_name_prefix + user_index_name
         client = Elasticsearch(url)
         client.indices.delete(index_name)
+
 
 if __name__ == '__main__':
     # delete()

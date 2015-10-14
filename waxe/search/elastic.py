@@ -2,7 +2,6 @@ import os
 import json
 import re
 
-from xmlutils.xml2json import xml2json
 from elasticsearch import Elasticsearch, helpers
 import xmltool
 

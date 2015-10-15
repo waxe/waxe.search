@@ -120,6 +120,7 @@ def index_file(client, index, ident, path, root_path):
         obj = xmltool.load(path)
     except:
         log.exception("Can't load %s for indexing" % path)
+        return
 
     tags = {}
     attrs = []

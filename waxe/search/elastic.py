@@ -1,9 +1,13 @@
 import os
-import json
-import re
+import hashlib
 
 from elasticsearch import Elasticsearch, helpers
 import xmltool
+
+# TODO: not really nice, but since we always want cache on the dtd...
+import xmltool.cache
+xmltool.cache.CACHE_TIMEOUT = 3600
+
 
 from waxe.core import browser
 
@@ -79,23 +83,28 @@ def _init_settings(url, index):
                 "properties": {
                     "abspath": {
                         "type": "string",
-                        "analyzer": "path_analyzer"
+                        "analyzer": "path_analyzer",
+                        "include_in_all": False
                     },
                     "relpath": {
                         "type": "string",
-                        "analyzer": "path_analyzer"
+                        "analyzer": "path_analyzer",
+                        "include_in_all": False
+                    },
+                    "extension": {
+                        "index": "not_analyzed",
+                        "type": "string",
+                        "include_in_all": False
                     },
                     "path_completion": {
                         "type": "string",
                         "index_analyzer": "nGram_analyzer",
-                        "search_analyzer": "whitespace_analyzer"
-                    },
-                    "extension": {
-                        "index": "not_analyzed",
-                        "type": "string"
+                        "search_analyzer": "whitespace_analyzer",
+                        "include_in_all": False
                     },
                     "time": {
-                        "type": "float"
+                        "type": "float",
+                        "include_in_all": False
                     },
                 }
             }
@@ -104,132 +113,85 @@ def _init_settings(url, index):
     client.indices.create(index=index, body=body)
 
 
-def index_file(client, index, path, root_path):
-    """Index a file in elasticsearch
-    """
+def index_file(client, index, ident, path, root_path):
     filename, ext = os.path.splitext(path)
-    log.debug('Indexing path %s' % path)
-    content = None
+    relpath = browser.relative_path(path, root_path)
     try:
         obj = xmltool.load(path)
-        with open(path, 'r') as f:
-            content = f.read()
-
-        # Remove the XML tags
-        content = re.sub(r'\s*<[^>/]*?>', ' ', content)
-        content = re.sub(r'<[^>]*?>\s*', ' ', content)
     except:
-        log.exception("Can't load %s." % path)
-        return
-
-    relpath = browser.relative_path(path, root_path)
-    body = {
-        'abspath': path,
-        'relpath': relpath,
-        'extension': ext,
-        'path_completion': relpath.replace('/', ' '),
-        "content": content,
-        'time': os.path.getmtime(path),
-    }
-    res = client.index(index=index, doc_type=DOC_TYPE_FILE, body=body)
+        log.exception("Can't load %s for indexing" % path)
 
     tags = {}
+    attrs = []
     for elt in obj.walk():
+        for kv in (elt.attributes or {}).iteritems():
+            attrs.append('%s=%s' % kv)
         if not isinstance(elt, xmltool.elements.TextElement):
             continue
         if not elt.text:
             continue
         tags.setdefault(elt.tagname, []).append(elt.text)
 
-    for k, v in tags.iteritems():
-        body = {
-            'abspath': path,
-            'relpath': relpath,
-            'extension': ext,
-            'tag': k,
-            # Don't use contents to have the same field names like in
-            # DOC_TYPE_FILE
-            'content': v
-        }
-        res = client.index(index=index, doc_type=DOC_TYPE_TAG, body=body)
-
-        if not res['created']:
-            log.error('Error indexing file (tag) %s in %s.%s.\n\n%s' % (
-                path, index, DOC_TYPE_TAG, res))
-
-    log.debug('Indexed path %s' % path)
+    body = {
+        'abspath': path,
+        'relpath': relpath,
+        'extension': ext,
+        'path_completion': relpath.replace('/', ' '),
+        'time': os.path.getmtime(path),
+        "tags": tags,
+        "attrs": attrs
+    }
+    client.index(index=index, doc_type=DOC_TYPE_FILE, body=body, id=ident)
 
 
 def delete_file(client, index, ident, abspath):
-    log.debug('deleting file %s in %s.%s' % (abspath, index, DOC_TYPE_FILE))
-
-    body = {
-        "query": {
-            "term": {
-                "abspath": abspath
-            }
-        }
-    }
-    ok = True
-    rows = helpers.scan(client, index=index, doc_type=DOC_TYPE_TAG, query=body)
-    for row in rows:
-        tag_ident = row['_id']
-        response = client.delete(index=index, doc_type=DOC_TYPE_TAG,
-                                 id=tag_ident)
-        if not response['found']:
-            ok = False
-            log.error('Error deleting file %s in %s.%s.\n\n%s' % (
-                abspath, index, DOC_TYPE_TAG, response))
-
-    if not ok:
-        return
-
-    # Delete the entry in file only if all the entries in tag are deleted. It's
-    # very important since the use entry in file to know if a file exists. If
-    # there is a failure while deleting tag, we need the entry in file for the
-    # next scan.
     response = client.delete(index=index, doc_type=DOC_TYPE_FILE, id=ident)
     if not response['found']:
         log.error('Error deleting file %s in %s.%s.\n\n%s' % (
             abspath, index, DOC_TYPE_FILE, response))
-    log.debug('deleted file %s in %s.%s' % (abspath, index, DOC_TYPE_FILE))
 
 
-def incremental_index(url, index, paths, root_path, force=False):
+def partial_index(url, index, paths, root_path):
     client = Elasticsearch(url)
-
-    # Get all the files for reindexing
-    rows = helpers.scan(client, index=index, doc_type=DOC_TYPE_FILE)
-
-    done = []
-
-    for row in rows:
-        path = row['_source']['abspath']
-        ident = row['_id']
-
-        if not force and path not in paths:
-            # Partial update
-            continue
-
-        done += [path]
-
-        if not os.path.exists(path):
-            log.debug("%s dosn't exist" % path)
-            delete_file(client, index, ident, path)
-            continue
-
-        indexed_time = row['_source']['time']
-        mtime = os.path.getmtime(path)
-        if mtime > indexed_time:
-            # TODO: find a better way to update document
-            # The file has changed, we delete it to reindex it!
-            log.debug('%s has changed' % path)
-            delete_file(client, index, ident, path)
-            index_file(client, index, path, root_path)
-
     for path in paths:
-        if path not in done:
-            index_file(client, index, path, root_path)
+        ident = hashlib.sha224(path).hexdigest()
+        if os.path.exists(path):
+            index_file(client, index, ident, path, root_path)
+        else:
+            delete_file(client, index, ident, path)
+
+
+def incremental_index(url, index, paths, root_path):
+    try:
+        client = Elasticsearch(url)
+        # Get all the files for reindexing
+        rows = helpers.scan(client, index=index, doc_type=DOC_TYPE_FILE)
+        done = []
+        for row in rows:
+            path = row['_source']['abspath']
+            ident = row['_id']
+
+            done += [path]
+
+            if not os.path.exists(path):
+                log.debug("%s dosn't exist" % path)
+                delete_file(client, index, ident, path)
+                continue
+
+            indexed_time = row['_source']['time']
+            mtime = os.path.getmtime(path)
+            if mtime > indexed_time:
+                log.debug('%s has changed' % path)
+                index_file(client, index, ident, path, root_path)
+
+        for path in paths:
+            if path not in done:
+                ident = hashlib.sha224(path).hexdigest()
+                index_file(client, index, ident, path, root_path)
+
+    except:
+        log.exception('Failed to reindex')
+        raise
 
 
 def _search_body(expr, abspath, ext, tag):
@@ -248,16 +210,9 @@ def _search_body(expr, abspath, ext, tag):
             }
         })
 
-    if tag:
-        conditions.append({
-            'term': {
-                'tag': tag
-            }
-        })
-
     query = {
         'match': {
-            'content': expr
+            (tag or '_all'): expr
         }
     }
 
@@ -290,17 +245,15 @@ def do_search(url, index, expr, abspath=None, ext=None, tag=None, page=1):
 
     body = _search_body(expr, abspath, ext, tag)
 
+    fields = 'tags.%s' % tag if tag else "*"
     body['highlight'] = {
         "pre_tags": ["<strong>"],
         "post_tags": ["</strong>"],
         "fields": {
-            "content": {}
+            fields: {}
         }
     }
     doc_type = DOC_TYPE_FILE
-    if tag:
-        doc_type = DOC_TYPE_TAG
-
     from_ = (page - 1) * HITS_PER_PAGE
     res = client.search(index=index, doc_type=doc_type, body=body,
                         size=HITS_PER_PAGE, from_=from_)

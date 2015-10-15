@@ -45,7 +45,8 @@ class SearchView(BaseUserView):
                 highlight = dic['highlight']
                 newdic['excerpts'] = []
                 for k, v in highlight.iteritems():
-                    newdic['excerpts'].append((k, v))
+                    key = ' > '.join(k.split('.')[1:])
+                    newdic['excerpts'].append((key, v))
                 lis += [newdic]
         return {
             'results': lis,

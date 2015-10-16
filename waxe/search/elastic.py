@@ -212,7 +212,7 @@ def _search_body(expr, abspath, ext, tag):
         })
 
     query = {
-        'match': {
+        'match_phrase': {
             (tag or '_all'): expr
         }
     }

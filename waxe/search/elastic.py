@@ -124,14 +124,19 @@ def index_file(client, index, ident, path, root_path):
 
     tags = {}
     attrs = []
-    for elt in obj.walk():
+    # In waiting xmltool include self in the walk, do it manually
+    def parse_elt(elt):
         for kv in (elt.attributes or {}).iteritems():
             attrs.append('%s=%s' % kv)
         if not isinstance(elt, xmltool.elements.TextElement):
-            continue
+            return
         if not elt.text:
-            continue
+            return
         tags.setdefault(elt.tagname, []).append(elt.text)
+
+    parse_elt(obj)
+    for elt in obj.walk():
+        parse_elt(elt)
 
     body = {
         'abspath': path,

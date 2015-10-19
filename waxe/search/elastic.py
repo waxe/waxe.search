@@ -18,8 +18,7 @@ log = logging.getLogger(__name__)
 HITS_PER_PAGE = 20
 COMPLETION_HITS = 20
 
-DOC_TYPE_FILE = 'file'
-DOC_TYPE_TAG = 'tag'
+DOC_TYPE_FILE = 'waxe-file'
 
 
 def _init_settings(url, index):
@@ -79,7 +78,8 @@ def _init_settings(url, index):
             },
         },
         "mappings": {
-            "_default_": {
+            DOC_TYPE_FILE: {
+                "date_detection": False,
                 "properties": {
                     "abspath": {
                         "type": "string",
@@ -124,6 +124,7 @@ def index_file(client, index, ident, path, root_path):
 
     tags = {}
     attrs = []
+
     # In waiting xmltool include self in the walk, do it manually
     def parse_elt(elt):
         for kv in (elt.attributes or {}).iteritems():

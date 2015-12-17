@@ -1,3 +1,5 @@
+import os
+
 from pyramid.view import view_config
 import pyramid.httpexceptions as exc
 from waxe.core.views.base import BaseUserView
@@ -42,6 +44,7 @@ class SearchView(BaseUserView):
             for dic in res:
                 newdic = {}
                 newdic['path'] = dic['_source']['relpath']
+                newdic['name'] = os.path.basename(newdic['path'])
                 highlight = dic['highlight']
                 newdic['excerpts'] = []
                 for k, v in highlight.iteritems():

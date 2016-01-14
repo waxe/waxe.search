@@ -56,7 +56,6 @@ def main(argv=sys.argv):
         DBSession.add(uc)
         user_index_name = uc.user.get_search_dirname()
         index_name = index_name_prefix + user_index_name
-        elastic._init_settings(url, index_name)
         # TODO: support another extensions for the search
         # TODO: Get extensions from the settngs
         extensions = ['.xml']

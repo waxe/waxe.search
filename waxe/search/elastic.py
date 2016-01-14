@@ -21,10 +21,9 @@ COMPLETION_HITS = 20
 DOC_TYPE_FILE = 'waxe-file'
 
 
-def _init_settings(url, index):
+def _init_settings(client, index):
     """Create the index if it not exists
     """
-    client = Elasticsearch(url)
     if client.indices.exists(index=index):
         return
 
@@ -160,6 +159,7 @@ def delete_file(client, index, ident, abspath):
 
 def partial_index(url, index, paths, root_path):
     client = Elasticsearch(url)
+    _init_settings(client, index)
     for path in paths:
         ident = hashlib.sha224(path).hexdigest()
         if os.path.exists(path):
@@ -171,6 +171,7 @@ def partial_index(url, index, paths, root_path):
 def incremental_index(url, index, paths, root_path):
     try:
         client = Elasticsearch(url)
+        _init_settings(client, index)
         # Get all the files for reindexing
         rows = helpers.scan(client, index=index, doc_type=DOC_TYPE_FILE)
         done = []
@@ -193,7 +194,7 @@ def incremental_index(url, index, paths, root_path):
 
         for path in paths:
             if path not in done:
-                ident = hashlib.sha224(path).hexdigest()
+                ident = hashlib.sha224(path.encode('utf-8')).hexdigest()
                 index_file(client, index, ident, path, root_path)
 
     except:

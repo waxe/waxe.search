@@ -30,39 +30,51 @@ def _init_settings(client, index):
     body = {
         "settings": {
             "analysis": {
+                "char_filter": {
+                    "slash_pattern": {
+                        "type": "pattern_replace",
+                        "pattern": "[/\\.]",
+                        "replacement": " "
+                    }
+                },
                 "filter": {
                     "nGram_filter": {
                         "type": "nGram",
-                        "min_gram": 2,
+                        "min_gram": 1,
                         "max_gram": 20,
                         "token_chars": [
                             "letter",
                             "digit",
                             "punctuation",
-                            "symbol"]
+                            "symbol"
+                        ]
                     }
                 },
                 "analyzer": {
-                    "nGram_analyzer": {
-                        "type": "custom",
-                        "tokenizer": "whitespace",
-                        "filter": [
-                            "lowercase",
-                            "asciifolding",
-                            "nGram_filter"
-                        ]
-                    },
                     "whitespace_analyzer": {
                         "type": "custom",
-                        "tokenizer": "whitespace",
+                        "tokenizer": "standard",
+                        "char_filter": [
+                            "slash_pattern"
+                        ],
                         "filter": [
-                            "lowercase",
-                            "asciifolding"
+                            "lowercase"
                         ]
                     },
                     "path_analyzer": {
                         "type": "custom",
                         "tokenizer": "path_hierarchy"
+                    },
+                    "path_comp_analyzer": {
+                        "type": "custom",
+                        "tokenizer": "standard",
+                        "char_filter": [
+                            "slash_pattern"
+                        ],
+                        "filter": [
+                            "lowercase",
+                            "nGram_filter"
+                        ]
                     },
                     "html_analyzer": {
                         "type": "custom",
@@ -97,7 +109,7 @@ def _init_settings(client, index):
                     },
                     "path_completion": {
                         "type": "string",
-                        "index_analyzer": "nGram_analyzer",
+                        "index_analyzer": "path_comp_analyzer",
                         "search_analyzer": "whitespace_analyzer",
                         "include_in_all": False
                     },
@@ -142,7 +154,7 @@ def index_file(client, index, ident, path, root_path):
         'abspath': path,
         'relpath': relpath,
         'extension': ext,
-        'path_completion': relpath.replace('/', ' '),
+        'path_completion': relpath,
         'time': os.path.getmtime(path),
         "tags": tags,
         "attrs": attrs

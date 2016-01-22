@@ -18,7 +18,7 @@ class TestElastic(unittest.TestCase):
         relpath = 'GFGS/V2/VOCAB/A/APERCEVOIR-PASSIF-PASSECOMPOSE-3PS.xml'
         body = {
             'relpath': relpath,
-            'path_completion': relpath.replace('/', ' '),
+            'path_completion': relpath,
         }
         res = client.index(index=index, doc_type=elastic.DOC_TYPE_FILE, body=body)
         # Make sure elastic has indexed.
@@ -42,5 +42,21 @@ class TestElastic(unittest.TestCase):
         self.assertEqual(res, [relpath])
 
         value = 'VO SE'
+        res = elastic.path_completion(url, index, value)
+        self.assertEqual(res, [relpath])
+
+        value = 'GFGS/V2/VOCAB'
+        res = elastic.path_completion(url, index, value)
+        self.assertEqual(res, [relpath])
+
+        value = 'GFGS V2 VOCAB A APERCEVOIR'
+        res = elastic.path_completion(url, index, value)
+        self.assertEqual(res, [relpath])
+
+        value = 'GFGS V2 VOCAB A APERCEVOIR PASSIF PASSECOMPOSE 3PS xml'
+        res = elastic.path_completion(url, index, value)
+        self.assertEqual(res, [relpath])
+
+        value = relpath
         res = elastic.path_completion(url, index, value)
         self.assertEqual(res, [relpath])
